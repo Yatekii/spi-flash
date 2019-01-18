@@ -33,110 +33,93 @@ const SPIFLASH_MACREAD: u8 = 0x4B;        // read unique ID number (MAC)
 
 use nb::block;
 use nb;
-use embedded_hal::{
-    digital::OutputPin,
-    spi::FullDuplex,
-};
 
-pub struct SPIFlash<CS, SPI>
-where
-    CS: OutputPin,
-    SPI: FullDuplex<u8>,
-{
-    spi: SPI,
-    cs: CS,
+pub trait Transmitter {
+    fn send(&mut self, buffer: &[u8]);
+    fn read(&mut self, buffer: &mut [u8]);
+    fn send_read(&mut self, buffer_tx: & [u8], buffer_rx: &mut [u8]);
 }
 
-impl<CS, SPI> SPIFlash<CS, SPI>
+pub struct SPIFlash<T>
 where
-    CS: OutputPin,
-    SPI: FullDuplex<u8>,
+    T: Transmitter
 {
-    pub fn new(spi: SPI, cs: CS) -> Self {
+    spi: T,
+}
+
+impl<T> SPIFlash<T>
+where
+    T: Transmitter,
+{
+    pub fn new(spi: T) -> Self {
         Self {
-            spi,
-            cs
+            spi
         }
-    }
-
-    pub fn unlock(&mut self) {
-        self.send(SPIFLASH_STATUSWRITE);
-        self.send(0);
-    }
-
-    pub fn read_byte(&mut self, address: u32) -> u8 {
-        self.send(SPIFLASH_ARRAYREADLOWFREQ);
-        self.send((address >> 16) as u8);
-        self.send((address >> 8) as u8);
-        self.send((address) as u8);
-        self.send(0);
-        // TODO: Fix! UNSAFE!
-        if let Ok(byte) = block!(self.spi.read()) {
-            byte
-        } else {
-            0
-        }
-    }
-
-    // pub fn read_bytes(address: u32, buffer: &mut [u8]) -> u8 {
-    //     self.command(SPIFLASH_ARRAYREAD);
-    //     SPI.transfer(address >> 16);
-    //     SPI.transfer(address >> 8);
-    //     SPI.transfer(address);
-    //     SPI.transfer(0); //"dont care"
-    //     for i in 0..buffer.len() {
-    //         buffer[i] = SPI.transfer(0);
-    //     }
-    // }
-
-    pub fn write_byte(&mut self, address: u32, byte: u8) {
-        self.send(SPIFLASH_BYTEPAGEPROGRAM);
-        self.send((address >> 16) as u8);
-        self.send((address >> 8) as u8);
-        self.send((address) as u8);
-        self.send(byte);
     }
 
     /// Checks whether the SPI flash is busy.
     /// Returns `true` if it is still busy.
-    fn busy(&mut self) -> bool {
+    fn is_busy(&mut self) -> bool {
         self.read_status() & 1 > 0
     }
 
-    /// Waits for the SPI flash to complete it's current action.
-    /// Supports the async API of the `nb` crate.
-    fn wait(&mut self) -> nb::Result<(), ()> {
-        if self.busy() {
-            Err(nb::Error::WouldBlock)
-        } else {
-            Ok(())
-        }
+    /// Blocks until the SPI flash completes it's current action.
+    fn wait(&mut self) {
+        while self.is_busy() {};
     }
 
-    fn read_status(&mut self) -> u8 {
-        self.send(SPIFLASH_STATUSREAD);
-        // TODO: Fix! UNSAFE!
-        self.read()
+    /// Enables the write mode on the SPI Flash.
+    /// Blocks until the write mode is enabled.
+    fn enable_write(&mut self) {
+        self.spi.send(&[SPIFLASH_STATUSWRITE]);
+        self.wait()
     }
 
-    /// erase entire flash memory array
-    /// may take several seconds depending on size, but is non blocking
-    /// so you may wait for this to complete using busy() or continue doing
-    /// other things and later check if the chip is done with busy()
-    /// note that any command will first wait for chip to become available using busy()
-    /// so no need to do that twice
+    /// Reads the SPI Flash status.
+    /// Blocks until the read is done.
+    pub fn read_status(&mut self) -> u8 {
+        let mut byte = [0; 1];
+        self.spi.send_read(&[SPIFLASH_STATUSREAD], &mut byte);
+        byte[0]
+    }
+
+    /// Reads a single byte at `address` from the SPI Flash and returns it.
+    /// Blocks until the read is done.
+    pub fn read_byte(&mut self, address: u32) -> u8 {
+        let mut byte = [0; 1];
+        self.spi.send_read(&[SPIFLASH_ARRAYREADLOWFREQ, (address >> 16) as u8, (address >> 8) as u8, (address) as u8, 0], &mut byte);
+        byte[0]
+    }
+
+    /// Reads a `buffer.len()` bytes at `address` from the SPI Flash and stores them in `buffer`.
+    /// Blocks until the read is done.
+    pub fn read_bytes(&mut self, address: u32, buffer: &mut [u8]) {
+        self.spi.send_read(&[SPIFLASH_ARRAYREADLOWFREQ, (address >> 16) as u8, (address >> 8) as u8, (address) as u8, 0], buffer);
+    }
+
+    /// Writes a single byte to the SPI Flash at `address`
+    /// Blocks until the write is done.
+    pub fn write_byte(&mut self, address: u32, byte: u8) {
+        self.enable_write();
+        self.spi.send(&[SPIFLASH_BYTEPAGEPROGRAM, (address >> 16) as u8, (address >> 8) as u8, (address) as u8, byte]);
+    }
+
+    /// Erase the entire flash memory.
+    /// Blocks until the erase is done. This can take up to several seconds.
     pub fn chip_erase(&mut self) {
-        self.send(SPIFLASH_CHIPERASE);
-        let _ = block!(self.wait());
+        self.enable_write();
+        self.spi.send(&[SPIFLASH_CHIPERASE]);
+        self.wait();
     }
 
     /// Erase a 4k block of the memory.
+    /// Blocks until the erase is done.
     pub fn erase_4k_block(&mut self, address: u32) {
-        // TODO: write command;
-        self.send(SPIFLASH_BLOCKERASE_4K);
-        self.send((address >> 16) as u8);
-        self.send((address >> 8) as u8);
-        self.send((address) as u8);
+        self.enable_write();
+        // Sanitize the address where we erase at.
+        let aligned_address = address | !0xFFF;
+        self.spi.send(&[SPIFLASH_BLOCKERASE_4K, (aligned_address >> 16) as u8, (aligned_address >> 8) as u8, (aligned_address) as u8]);
+        self.wait();
     }
 
     // pub fn erase_32k_block(uint32_t address) {
@@ -153,24 +136,14 @@ where
     //     SPI.transfer(address);
     // }
 
+    /// Enables sleep mode for the SPI Flash to have it consume less power.
     pub fn sleep(&mut self) {
-        self.send(SPIFLASH_SLEEP);
+        self.spi.send(&[SPIFLASH_SLEEP]);
     }
 
+    /// Wakes the SPI Flash from sleep mode.
     pub fn wakeup(&mut self) {
-        self.send(SPIFLASH_WAKE);
-    }
-
-    fn send(&mut self, byte: u8) {
-        let _ = block!(self.spi.send(byte));
-    }
-
-    fn read(&mut self) -> u8 {
-        if let Ok(b) = block!(self.spi.read()) {
-            b
-        } else {
-            0
-        }
+        self.spi.send(&[SPIFLASH_WAKE]);
     }
 }
 
