@@ -1,3 +1,5 @@
+#![no_std]
+
 const SPIFLASH_WRITEENABLE: u8 = 0x06;        // write enable
 const SPIFLASH_WRITEDISABLE: u8 = 0x04;        // write disable
 
@@ -39,7 +41,7 @@ use embedded_hal::{
 pub struct SPIFlash<CS, SPI>
 where
     CS: OutputPin,
-    SPI: FullDuplex<u8> + std::fmt::Debug,
+    SPI: FullDuplex<u8>,
 {
     spi: SPI,
     cs: CS,
@@ -48,7 +50,7 @@ where
 impl<CS, SPI> SPIFlash<CS, SPI>
 where
     CS: OutputPin,
-    SPI: FullDuplex<u8> + std::fmt::Debug,
+    SPI: FullDuplex<u8>,
 {
     pub fn new(spi: SPI, cs: CS) -> Self {
         Self {
