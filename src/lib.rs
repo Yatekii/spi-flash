@@ -1,25 +1,23 @@
-#define SPIFLASH_WRITEENABLE      0x06        // write enable
-#define SPIFLASH_WRITEDISABLE     0x04        // write disable
+const SPIFLASH_WRITEENABLE: u8 = 0x06;        // write enable
+const SPIFLASH_WRITEDISABLE: u8 = 0x04;        // write disable
 
-#define SPIFLASH_BLOCKERASE_4K    0x20        // erase one 4K block of flash memory
-#define SPIFLASH_BLOCKERASE_32K   0x52        // erase one 32K block of flash memory
-#define SPIFLASH_BLOCKERASE_64K   0xD8        // erase one 64K block of flash memory
-#define SPIFLASH_CHIPERASE        0x60        // chip erase (may take several seconds depending on size)
+const SPIFLASH_BLOCKERASE_4K: u8 = 0x20;        // erase one 4K block of flash memory
+const SPIFLASH_BLOCKERASE_32K: u8 = 0x52;        // erase one 32K block of flash memory
+const SPIFLASH_BLOCKERASE_64K: u8 = 0xD8;        // erase one 64K block of flash memory
+const SPIFLASH_CHIPERASE: u8 =  0x60;        // chip erase (may take several seconds depending on size)
                                               // but no actual need to wait for completion (instead need to check the status register BUSY bit)
-#define SPIFLASH_STATUSREAD       0x05        // read status register
-#define SPIFLASH_STATUSWRITE      0x01        // write status register
-#define SPIFLASH_ARRAYREAD        0x0B        // read array (fast, need to add 1 dummy byte after 3 address bytes)
-#define SPIFLASH_ARRAYREADLOWFREQ 0x03        // read array (low frequency)
+const SPIFLASH_STATUSREAD: u8 = 0x05;        // read status register
+const SPIFLASH_STATUSWRITE: u8 = 0x01;        // write status register
+const SPIFLASH_ARRAYREAD: u8 = 0x0B;        // read array (fast, need to add 1 dummy byte after 3 address bytes)
+const SPIFLASH_ARRAYREADLOWFREQ: u8 = 0x03;        // read array (low frequency)
 
-#define SPIFLASH_SLEEP            0xB9        // deep power down
-#define SPIFLASH_WAKE             0xAB        // deep power wake up
-#define SPIFLASH_BYTEPAGEPROGRAM  0x02        // write (1 to 256bytes)
-#define SPIFLASH_IDREAD           0x9F        // read JEDEC manufacturer and device ID (2 bytes, specific bytes for each manufacturer and device)
+const SPIFLASH_SLEEP: u8 = 0xB9;        // deep power down
+const SPIFLASH_WAKE: u8 = 0xAB;        // deep power wake up
+const SPIFLASH_BYTEPAGEPROGRAM: u8 = 0x02;        // write (1 to 256bytes)
+const SPIFLASH_IDREAD: u8 = 0x9F;        // read JEDEC manufacturer and device ID (2 bytes, specific bytes for each manufacturer and device)
                                               // Example for Atmel-Adesto 4Mbit AT25DF041A: 0x1F44 (page 27: http://www.adestotech.com/sites/default/files/datasheets/doc3668.pdf)
                                               // Example for Winbond 4Mbit W25X40CL: 0xEF30 (page 14: http://www.winbond.com/NR/rdonlyres/6E25084C-0BFE-4B25-903D-AE10221A0929/0/W25X40CL.pdf)
-#define SPIFLASH_MACREAD          0x4B        // read unique ID number (MAC)
-
-uint8_t SPIFlash::UNIQUEID[8];
+const SPIFLASH_MACREAD: u8 = 0x4B;        // read unique ID number (MAC)
 
 /// IMPORTANT: NAND FLASH memory requires erase before write, because
 ///            it can only transition from 1s to 0s and only the erase command can reset all 0s to 1s
@@ -31,93 +29,92 @@ uint8_t SPIFlash::UNIQUEID[8];
 /// Example for Atmel-Adesto 4Mbit AT25DF041A: 0x1F44 (page 27: http://www.adestotech.com/sites/default/files/datasheets/doc3668.pdf)
 /// Example for Winbond 4Mbit W25X40CL: 0xEF30 (page 14: http://www.winbond.com/NR/rdonlyres/6E25084C-0BFE-4B25-903D-AE10221A0929/0/W25X40CL.pdf)
 
-struct SPIFlash {
+use nb::block;
+use nb;
+use embedded_hal::{
+    digital::OutputPin,
+    spi::FullDuplex,
+};
+
+pub struct SPIFlash<CS, SPI>
+where
+    CS: OutputPin,
+    SPI: FullDuplex<u8> + std::fmt::Debug,
+{
     spi: SPI,
-    cs: Pin,
-    jedec_id: u16,
+    cs: CS,
 }
 
-impl SPIFlash {
-    pub fn new(spi: SPI, cs: Pin, jedec_id: u16) -> Self {
+impl<CS, SPI> SPIFlash<CS, SPI>
+where
+    CS: OutputPin,
+    SPI: FullDuplex<u8> + std::fmt::Debug,
+{
+    pub fn new(spi: SPI, cs: CS) -> Self {
         Self {
             spi,
-            cs,
-            jedec_id
+            cs
         }
     }
 
-    pub fn unlock() {
-        write_command(SPIFLASH_STATUSWRITE);
-        SPI.transfer(0);
+    pub fn unlock(&mut self) {
+        self.send(SPIFLASH_STATUSWRITE);
+        self.send(0);
     }
 
-    pub fn write_command(command: u8) {
-        command(SPIFLASH_WRITEENABLE);
-    }
-
-    pub fn command(command: u8) {
-        //wait for any write/erase to complete
-        //  a time limit cannot really be added here without it being a very large safe limit
-        //  that is because some chips can take several seconds to carry out a chip erase or other similar multi block or entire-chip operations
-        //  a recommended alternative to such situations where chip can be or not be present is to add a 10k or similar weak pulldown on the
-        //  open drain MISO input which can read noise/static and hence return a non 0 status byte, causing the while() to hang when a flash chip is not present
-        if cmd != SPIFLASH_WAKE {
-            while busy();
-        }
-        SPI.transfer(command);
-    }
-
-    pub fn read_device_id() {
-        self.command(SPIFLASH_IDREAD);
-        u16 jedec_id = SPI.transfer(0) << 8 | SPI.transfer(0);
-        self.jedec_id = jedec_id;
-    }
-
-    pub fn read_unique_id() {
-        self.command(SPIFLASH_MACREAD);
-        SPI.transfer(0);
-        SPI.transfer(0);
-        SPI.transfer(0);
-        SPI.transfer(0);
-        for i in 0..8 {
-            UNIQUEID[i] = SPI.transfer(0);
+    pub fn read_byte(&mut self, address: u32) -> u8 {
+        self.send(SPIFLASH_ARRAYREADLOWFREQ);
+        self.send((address >> 16) as u8);
+        self.send((address >> 8) as u8);
+        self.send((address) as u8);
+        self.send(0);
+        // TODO: Fix! UNSAFE!
+        if let Ok(byte) = block!(self.spi.read()) {
+            byte
+        } else {
+            0
         }
     }
 
-    pub fn read_byte(address: u32) -> u8 {
-        self.command(SPIFLASH_ARRAYREADLOWFREQ);
-        SPI.transfer(addr >> 16);
-        SPI.transfer(addr >> 8);
-        SPI.transfer(addr);
-        u8 result = SPI.transfer(0);
+    // pub fn read_bytes(address: u32, buffer: &mut [u8]) -> u8 {
+    //     self.command(SPIFLASH_ARRAYREAD);
+    //     SPI.transfer(address >> 16);
+    //     SPI.transfer(address >> 8);
+    //     SPI.transfer(address);
+    //     SPI.transfer(0); //"dont care"
+    //     for i in 0..buffer.len() {
+    //         buffer[i] = SPI.transfer(0);
+    //     }
+    // }
+
+    pub fn write_byte(&mut self, address: u32, byte: u8) {
+        self.send(SPIFLASH_BYTEPAGEPROGRAM);
+        self.send((address >> 16) as u8);
+        self.send((address >> 8) as u8);
+        self.send((address) as u8);
+        self.send(byte);
     }
 
-    pub fn read_bytes(address: u32, buffer: &mut [u8]) -> u8 {
-        self.command(SPIFLASH_ARRAYREAD);
-        SPI.transfer(addr >> 16);
-        SPI.transfer(addr >> 8);
-        SPI.transfer(addr);
-        SPI.transfer(0); //"dont care"
-        for i in 0..buffer.len() {
-            buffer[i] = SPI.transfer(0);
-        }
-    }
-
-    pub fn write_byte(address: u32, byte: u8) -> u8 {
-        self.command_write(SPIFLASH_BYTEPAGEPROGRAM);
-        SPI.transfer(addr >> 16);
-        SPI.transfer(addr >> 8);
-        SPI.transfer(addr);
-        SPI.transfer(byte);
-    }
-
-    fn busy() -> bool {
+    /// Checks whether the SPI flash is busy.
+    /// Returns `true` if it is still busy.
+    fn busy(&mut self) -> bool {
         self.read_status() & 1 > 0
     }
 
-    fn read_status() -> u8 {
-        SPI.transfer(SPIFLASH_STATUSREAD);
-        uint8_t status = SPI.transfer(0);
+    /// Waits for the SPI flash to complete it's current action.
+    /// Supports the async API of the `nb` crate.
+    fn wait(&mut self) -> nb::Result<(), ()> {
+        if self.busy() {
+            Err(nb::Error::WouldBlock)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn read_status(&mut self) -> u8 {
+        self.send(SPIFLASH_STATUSREAD);
+        // TODO: Fix! UNSAFE!
+        self.read()
     }
 
     /// erase entire flash memory array
@@ -126,37 +123,52 @@ impl SPIFlash {
     /// other things and later check if the chip is done with busy()
     /// note that any command will first wait for chip to become available using busy()
     /// so no need to do that twice
-    pub fn chip_erase() {
-        self.command_write(SPIFLASH_CHIPERASE);
+    pub fn chip_erase(&mut self) {
+        self.send(SPIFLASH_CHIPERASE);
+        let _ = block!(self.wait());
     }
 
-    pub fn erase_4k_block(uint32_t addr) {
-        self.command(SPIFLASH_BLOCKERASE_4K, true); // Block Erase
-        SPI.transfer(addr >> 16);
-        SPI.transfer(addr >> 8);
-        SPI.transfer(addr);
+    /// Erase a 4k block of the memory.
+    pub fn erase_4k_block(&mut self, address: u32) {
+        // TODO: write command;
+        self.send(SPIFLASH_BLOCKERASE_4K);
+        self.send((address >> 16) as u8);
+        self.send((address >> 8) as u8);
+        self.send((address) as u8);
     }
 
-    pub fn erase_32k_block(uint32_t addr) {
-        self.command(SPIFLASH_BLOCKERASE_32K, true); // Block Erase
-        SPI.transfer(addr >> 16);
-        SPI.transfer(addr >> 8);
-        SPI.transfer(addr);
+    // pub fn erase_32k_block(uint32_t address) {
+    //     self.command(SPIFLASH_BLOCKERASE_32K, true); // Block Erase
+    //     SPI.transfer(address >> 16);
+    //     SPI.transfer(address >> 8);
+    //     SPI.transfer(address);
+    // }
+
+    // pub fn erase_64k_block(uint32_t address) {
+    //     self.command(SPIFLASH_BLOCKERASE_64K, true); // Block Erase
+    //     SPI.transfer(address >> 16);
+    //     SPI.transfer(address >> 8);
+    //     SPI.transfer(address);
+    // }
+
+    pub fn sleep(&mut self) {
+        self.send(SPIFLASH_SLEEP);
     }
 
-    pub fn erase_64k_block(uint32_t addr) {
-        self.command(SPIFLASH_BLOCKERASE_64K, true); // Block Erase
-        SPI.transfer(addr >> 16);
-        SPI.transfer(addr >> 8);
-        SPI.transfer(addr);
+    pub fn wakeup(&mut self) {
+        self.send(SPIFLASH_WAKE);
     }
 
-    pub fn sleep() {
-        self.command(SPIFLASH_SLEEP);
+    fn send(&mut self, byte: u8) {
+        let _ = block!(self.spi.send(byte));
     }
 
-    fn wakeup() {
-        self.command(SPIFLASH_WAKE);
+    fn read(&mut self) -> u8 {
+        if let Ok(b) = block!(self.spi.read()) {
+            b
+        } else {
+            0
+        }
     }
 }
 
@@ -165,23 +177,23 @@ impl SPIFlash {
 // ///          use the block erase commands to first clear memory (write 0xFFs)
 // /// This version handles both page alignment and data blocks larger than 256 bytes.
 // ///
-// void SPIFlash::writeBytes(uint32_t addr, const void* buf, uint16_t len) {
+// void SPIFlash::writeBytes(uint32_t address, const void* buf, uint16_t len) {
 //   uint16_t n;
-//   uint16_t maxBytes = 256-(addr%256);  // force the first set of bytes to stay within the first page
+//   uint16_t maxBytes = 256-(address%256);  // force the first set of bytes to stay within the first page
 //   uint16_t offset = 0;
 //   while (len>0)
 //   {
 //     n = (len<=maxBytes) ? len : maxBytes;
 //     command(SPIFLASH_BYTEPAGEPROGRAM, true);  // Byte/Page Program
-//     SPI.transfer(addr >> 16);
-//     SPI.transfer(addr >> 8);
-//     SPI.transfer(addr);
+//     SPI.transfer(address >> 16);
+//     SPI.transfer(address >> 8);
+//     SPI.transfer(address);
     
 //     for (uint16_t i = 0; i < n; i++)
 //       SPI.transfer(((uint8_t*) buf)[offset + i]);
 //     unselect();
     
-//     addr+=n;  // adjust the addresses and remaining bytes by what we've just transferred.
+//     address+=n;  // adjust the addresses and remaining bytes by what we've just transferred.
 //     offset +=n;
 //     len -= n;
 //     maxBytes = 256;   // now we can do up to 256 bytes per loop

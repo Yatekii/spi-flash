@@ -5,3 +5,5 @@ authors = ["Noah Huesser <yatekii@yatekii.ch>"]
 edition = "2018"
 
 [dependencies]
+nb = "*"
+embedded-hal = "*"
