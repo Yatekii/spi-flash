@@ -8,13 +8,8 @@ use nb::block;
 use panic_semihosting;
 
 use nrf52840_hal::{
-    spim::{
-        Spim,
-    },
-    gpio::{
-        p0,
-        Output,
-        PushPull,
+    uarte::{
+        Error
     },
     nrf52840_pac::{
         self as nrf52,
@@ -28,36 +23,6 @@ use nrf52840_dk_bsp::{
     nRF52840DK,
 };
 
-use spi_flash::{
-    self,
-    Transmitter
-};
-
-struct SPITransmitter {
-    spi: Spim<nrf52::SPIM2>,
-    cs: p0::P0_Pin<Output<PushPull>>,
-}
-
-impl SPITransmitter {
-    pub fn new(spi: Spim<nrf52::SPIM2>, cs: p0::P0_Pin<Output<PushPull>>) -> SPITransmitter {
-        SPITransmitter { spi, cs }
-    }
-}
-
-impl Transmitter for SPITransmitter {
-    fn send(&mut self, buffer: &[u8]) {
-        self.spi.write(&mut self.cs, buffer);
-    }
-
-    fn read(&mut self, buffer: &mut [u8]) {
-        self.spi.read(&mut self.cs, &[], buffer);
-    }
-
-    fn send_read(&mut self, buffer_tx: &[u8], buffer_rx: &mut [u8]) {
-        self.spi.read(&mut self.cs, buffer_tx, buffer_rx);
-    }
-}
-
 #[entry]
 fn main() -> ! {
     let mut nrf52 = nRF52840DK::take().unwrap();
@@ -66,16 +31,27 @@ fn main() -> ! {
 
     let mut uarte = nrf52.com;
 
-    if let Err(e) = uarte.write(&[65, 65, 65]) {
-        let k = e;
-    };
-
     // Alternately flash the red and blue leds
     loop {
-        nrf52.leds.led_2.enable();
-        delay(&mut timer, 1_000_000); // 250ms
-        nrf52.leds.led_2.disable();
-        delay(&mut timer, 1_000_000); // 1s
+        // nrf52.leds.led_2.enable();
+        // delay(&mut timer, 1_000_000); // 250ms
+        // nrf52.leds.led_2.disable();
+        // delay(&mut timer, 1_000_000); // 1s
+        let e = uarte.write(&[65, 65, 65]);
+        match e {
+            Err(Error::TxBufferTooLong) => nrf52.leds.led_1.enable(),
+            Err(Error::RxBufferTooLong) => nrf52.leds.led_2.enable(),
+            Err(Error::Transmit) => nrf52.leds.led_3.enable(),
+            Err(Error::Receive) => nrf52.leds.led_4.enable(),
+            Ok(_) => {
+                nrf52.leds.led_2.enable();
+                nrf52.leds.led_1.enable();
+                delay(&mut timer, 1_000_000); // 250ms
+                nrf52.leds.led_1.disable();
+                nrf52.leds.led_2.disable();
+                delay(&mut timer, 1_000_000); // 1s
+            }
+        }
     }
 }
 
