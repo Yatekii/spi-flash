@@ -7,7 +7,7 @@ use nb::block;
 #[allow(unused_imports)]
 use panic_semihosting;
 
-use cortex_m_semihosting::hprintln;
+// use cortex_m_semihosting::hprintln;
 
 use nrf52840_hal::{
     uarte::{
@@ -54,7 +54,7 @@ fn main() -> ! {
                 delay(&mut timer, 1_000_000); // 1s
             }
         }
-        hprintln!("Hello, world!").unwrap();
+        // hprintln!("Hello, world!").unwrap();
     }
 }
 
