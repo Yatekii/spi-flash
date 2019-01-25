@@ -20,7 +20,11 @@
         },
         "windows": {
           "MIMode": "gdb",
-          "miDebuggerPath": "C:\\Program Files (x86)\\GNU Tools ARM Embedded\\8 2018-q4-major\\bin\\arm-none-eabi-gdb.exe"
+          "preLaunchTask": "cargo build",
+          "debugServerPath": "C:\\Program Files (x86)\\SEGGER\\JLink_V640\\JLinkGDBServerCL.exe",
+          "debugServerArgs": "-select USB -device nRF52840_xxAA -endian little -if SWD -speed 4000 -noir -LocalhostOnly",
+          "miDebuggerPath": "C:\\Program Files (x86)\\GNU Tools ARM Embedded\\8 2018-q4-major\\bin\\arm-none-eabi-gdb.exe",
+          "miDebuggerArgs": "-q -x debug.gdb target/thumbv7m-none-eabi/debug/examples/status_read"
         }
       },
       {
@@ -42,7 +46,8 @@
         },
         "windows": {
           "MIMode": "gdb",
-          "miDebuggerPath": "C:\\Program Files (x86)\\GNU Tools ARM Embedded\\8 2018-q4-major\\bin\\arm-none-eabi-gdb.exe"
+          "miDebuggerPath": "C:\\Program Files (x86)\\GNU Tools ARM Embedded\\8 2018-q4-major\\bin\\arm-none-eabi-gdb.exe",
+          "args": []
         }
       }
     ]

@@ -68,7 +68,7 @@ fn main() -> ! {
 
     let status = flash.read_status();
 
-    let kek = 3;
+    let kek = 42;
 
     // Alternately flash the red and blue leds
     loop {
