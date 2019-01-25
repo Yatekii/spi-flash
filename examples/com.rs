@@ -39,7 +39,8 @@ fn main() -> ! {
         // delay(&mut timer, 1_000_000); // 250ms
         // nrf52.leds.led_2.disable();
         // delay(&mut timer, 1_000_000); // 1s
-        let e = uarte.write(&[65, 65, 65]);
+        let x = [65, 65, 65];
+        let e = uarte.write(&x);
         match e {
             Err(Error::TxBufferTooLong) => nrf52.leds.led_1.enable(),
             Err(Error::RxBufferTooLong) => nrf52.leds.led_2.enable(),
