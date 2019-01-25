@@ -12,7 +12,7 @@ use nrf52840_hal::{
         Spim,
     },
     gpio::{
-        p0,
+        Pin,
         Output,
         PushPull,
     },
@@ -35,11 +35,11 @@ use spi_flash::{
 
 struct SPITransmitter {
     spi: Spim<nrf52::SPIM2>,
-    cs: p0::P0_Pin<Output<PushPull>>,
+    cs: Pin<Output<PushPull>>,
 }
 
 impl SPITransmitter {
-    pub fn new(spi: Spim<nrf52::SPIM2>, cs: p0::P0_Pin<Output<PushPull>>) -> SPITransmitter {
+    pub fn new(spi: Spim<nrf52::SPIM2>, cs: Pin<Output<PushPull>>) -> SPITransmitter {
         SPITransmitter { spi, cs }
     }
 }
